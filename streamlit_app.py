@@ -2,132 +2,131 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, date
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from io import BytesIO
+from fpdf import FPDF
 
 st.set_page_config(page_title="Deteksi Stunting Anak SD", layout="centered")
 
-# Fungsi hitung umur
-def hitung_umur(tgl_lahir):
+# ---------- FUNGSI UMUR ----------
+def hitung_umur(tanggal_lahir):
     today = date.today()
-    umur = today - tgl_lahir
-    tahun = umur.days // 365
-    bulan = (umur.days % 365) // 30
-    hari = (umur.days % 365) % 30
-    return tahun, bulan, hari
+    umur_hari = (today - tanggal_lahir).days
+    tahun = umur_hari // 365
+    bulan = (umur_hari % 365) // 30
+    hari = (umur_hari % 365) % 30
+    return f"{tahun} tahun {bulan} bulan {hari} hari", tahun, bulan
 
-# Fungsi deteksi stunting sederhana (versi lokal)
-def deteksi_stunting(umur_tahun, tinggi):
-    # Ambang batas WHO sangat kompleks, ini versi sederhana
-    if umur_tahun <= 5:
-        batas = 110
-    elif umur_tahun <= 7:
-        batas = 115
-    elif umur_tahun <= 9:
-        batas = 125
-    else:
-        batas = 130
+# ---------- FUNGSI STUNTING ----------
+def cek_stunting(jk, umur_tahun, tinggi_cm):
+    batas_stunting = 115 if umur_tahun >= 5 else 110
+    return "Stunting" if tinggi_cm < batas_stunting else "Tidak Stunting"
 
-    if tinggi < batas:
-        return "Stunting", "Tinggi badan anak tergolong pendek untuk usianya."
-    else:
-        return "Normal", "Tinggi badan anak sesuai dengan usianya."
+# ---------- HEADER ----------
+st.title("📊 Deteksi Stunting untuk Anak SD")
+st.markdown("### 👶 Deteksi Dini Anak-Anak Desa")
+st.markdown("*Isi form berikut untuk mengecek status stunting dan mendapatkan tips bergambar!*")
 
-# Input
-st.title("📏 Deteksi Dini Stunting untuk Anak Sekolah Dasar")
-st.markdown("Masukkan data anak untuk mengetahui status pertumbuhan dan tips perbaikannya.")
-
+# ---------- INPUT ----------
 nama = st.text_input("Nama Anak")
-tgl_lahir = st.date_input("Tanggal Lahir", min_value=date(2010, 1, 1), max_value=date.today())
-tinggi_badan = st.number_input("Tinggi Badan (cm)", min_value=50.0, max_value=200.0, step=0.1)
+tanggal_lahir = st.date_input("Tanggal Lahir", min_value=date(2010,1,1), max_value=date.today())
+jk = st.radio("Jenis Kelamin", ["Laki-laki", "Perempuan"])
+tinggi_cm = st.number_input("Tinggi Badan (cm)", 50, 200)
 
-# Tombol Proses
-if st.button("🔍 Periksa Status"):
-    umur_tahun, umur_bulan, umur_hari = hitung_umur(tgl_lahir)
-    status, keterangan = deteksi_stunting(umur_tahun, tinggi_badan)
+# ---------- OUTPUT ----------
+if st.button("Cek Status"):
+    umur_str, umur_th, umur_bln = hitung_umur(tanggal_lahir)
+    status = cek_stunting(jk, umur_th, tinggi_cm)
 
-    # Hasil
-    st.subheader("📊 Hasil Pemeriksaan")
-    st.write(f"**Nama:** {nama}")
-    st.write(f"**Umur:** {umur_tahun} tahun, {umur_bulan} bulan, {umur_hari} hari")
-    st.write(f"**Status Gizi:** {status}")
-    st.info(keterangan)
+    st.success(f"📌 Umur: {umur_str}")
+    st.info(f"📈 Status Stunting: **{status}**")
 
-    # Tips
-    st.subheader("🍽️ Tips Khusus")
+    # ---------- TIPS ----------
     if status == "Stunting":
-        st.error("Anak tergolong stunting. Berikut beberapa saran:")
+        st.markdown("### 🌟 Tips Khusus untuk Anak Stunting")
         st.markdown("""
-        - Pastikan konsumsi makanan tinggi protein: telur, ikan, tempe.
-        - Rutin ke posyandu dan periksa pertumbuhan.
-        - Cukup tidur dan aktivitas fisik.
-        """)
+        <div style="background-color:#ffdddd; padding:15px; border-radius:10px">
+        ✅ Konsumsi makanan tinggi protein dan zat besi (ikan, telur, tempe, sayuran hijau).<br>
+        ✅ Tidur cukup minimal 9 jam per malam.<br>
+        ✅ Rutin olahraga ringan: jalan pagi, bermain aktif.<br>
+        ✅ Pantau tinggi badan setiap 3 bulan.<br>
+        ✅ Jangan lupa sarapan bergizi tiap pagi!
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.success("Anak tergolong normal. Tetap jaga pertumbuhan dengan:")
+        st.markdown("### 🌈 Tips Menjaga Pertumbuhan Anak Sehat")
         st.markdown("""
-        - Makan makanan bergizi seimbang.
-        - Minum air putih cukup.
-        - Bermain aktif dan tidur cukup.
-        """)
+        <div style="background-color:#ddffdd; padding:15px; border-radius:10px">
+        🥦 Makan 3x sehari dan 2x camilan sehat.<br>
+        🚰 Minum cukup air putih.<br>
+        🏃 Sering bermain dan bergerak.<br>
+        😴 Tidur malam yang cukup dan berkualitas.<br>
+        🧼 Cuci tangan sebelum makan!
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Simpan ke PDF
-    st.subheader("📥 Unduh Hasil sebagai PDF")
+    # ---------- CHART ----------
+    st.markdown("### 📊 Grafik Persebaran Stunting (Simulasi Desa)")
+    data = {'Stunting': 30, 'Tidak Stunting': 70}
+    fig, ax = plt.subplots(1,2, figsize=(10,4))
 
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, 800, "Laporan Status Pertumbuhan Anak")
-    c.setFont("Helvetica", 12)
-    c.drawString(50, 770, f"Nama Anak: {nama}")
-    c.drawString(50, 750, f"Umur: {umur_tahun} tahun, {umur_bulan} bulan, {umur_hari} hari")
-    c.drawString(50, 730, f"Tinggi Badan: {tinggi_badan} cm")
-    c.drawString(50, 710, f"Status: {status}")
-    c.drawString(50, 690, f"Keterangan: {keterangan}")
+    # Bar Chart
+    ax[0].bar(data.keys(), data.values(), color=['#ff6666','#66b3ff'])
+    ax[0].set_title("Jumlah Anak Berdasarkan Status")
+    ax[0].set_ylabel("Jumlah Anak")
+
+    # Pie Chart
+    ax[1].pie(data.values(), labels=data.keys(), autopct='%1.1f%%',
+              colors=['#ff9999','#66b3ff'], explode=(0.1, 0), shadow=True, startangle=90)
+    ax[1].axis('equal')
+    ax[1].set_title("Persentase Status Stunting")
+
+    st.pyplot(fig)
+
+    # ---------- PDF ----------
+    st.markdown("### 📄 Unduh Hasil & Tips PDF")
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=14)
+    pdf.set_fill_color(240, 240, 255)
+
+    pdf.cell(200, 10, txt="Laporan Deteksi Stunting Anak SD", ln=True, align='C')
+    pdf.ln(5)
+
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=f"Nama Anak: {nama}", ln=True)
+    pdf.cell(200, 10, txt=f"Jenis Kelamin: {jk}", ln=True)
+    pdf.cell(200, 10, txt=f"Tanggal Lahir: {tanggal_lahir.strftime('%d-%m-%Y')}", ln=True)
+    pdf.cell(200, 10, txt=f"Umur: {umur_str}", ln=True)
+    pdf.cell(200, 10, txt=f"Tinggi Badan: {tinggi_cm} cm", ln=True)
+    pdf.cell(200, 10, txt=f"Status: {status}", ln=True)
+    pdf.ln(10)
+
+    pdf.set_font("Arial", 'B', size=12)
+    pdf.cell(200, 10, txt="Tips untuk Anak:", ln=True)
+    pdf.set_font("Arial", size=11)
 
     if status == "Stunting":
-        c.setFillColor(colors.red)
-        c.drawString(50, 660, "Tips:")
-        c.setFillColor(colors.black)
-        c.drawString(60, 640, "- Perbanyak protein (ikan, telur, tempe).")
-        c.drawString(60, 620, "- Rutin periksa ke posyandu.")
-        c.drawString(60, 600, "- Tidur cukup, olahraga rutin.")
+        tips = [
+            "✅ Konsumsi makanan tinggi protein (ikan, tempe, telur).",
+            "✅ Tidur cukup minimal 9 jam per malam.",
+            "✅ Rutin olahraga ringan.",
+            "✅ Pantau tinggi badan setiap 3 bulan.",
+            "✅ Jangan lupa sarapan bergizi."
+        ]
     else:
-        c.setFillColor(colors.green)
-        c.drawString(50, 660, "Tips:")
-        c.setFillColor(colors.black)
-        c.drawString(60, 640, "- Makanan bergizi seimbang.")
-        c.drawString(60, 620, "- Minum air putih yang cukup.")
-        c.drawString(60, 600, "- Jaga waktu tidur dan aktivitas.")
+        tips = [
+            "🧼 Cuci tangan sebelum makan.",
+            "🥦 Makan 3x sehari dan 2x camilan sehat.",
+            "🚰 Minum cukup air putih.",
+            "🏃 Aktif bergerak dan bermain.",
+            "😴 Tidur cukup dan berkualitas."
+        ]
+    
+    for tip in tips:
+        pdf.cell(200, 10, txt=tip, ln=True)
 
-    c.save()
-    st.download_button("📄 Unduh PDF", buffer.getvalue(), file_name="hasil_pemeriksaan.pdf")
+    pdf_output = f"/mnt/data/laporan_{nama.replace(' ', '_')}.pdf"
+    pdf.output(pdf_output)
 
-# Contoh data populasi
-data = {
-    'Nama': ['Ani', 'Budi', 'Citra', 'Dodi', 'Eka'],
-    'Status': ['Stunting', 'Normal', 'Normal', 'Stunting', 'Normal']
-}
-df = pd.DataFrame(data)
+    with open(pdf_output, "rb") as f:
+        st.download_button("📥 Unduh PDF Hasil Deteksi", data=f, file_name=f"{nama}_hasil_stunting.pdf")
 
-# Grafik
-st.subheader("📈 Statistik Persebaran")
-
-# Bar chart
-status_counts = df['Status'].value_counts()
-fig_bar, ax_bar = plt.subplots()
-ax_bar.bar(status_counts.index, status_counts.values, color=['#ff9999', '#66b3ff'])
-ax_bar.set_ylabel('Jumlah Anak')
-ax_bar.set_title('Persebaran Status Gizi')
-st.pyplot(fig_bar)
-
-# Pie chart
-fig_pie, ax_pie = plt.subplots()
-ax_pie.pie(status_counts.values, labels=status_counts.index, autopct='%1.1f%%',
-           colors=['#ff9999', '#66b3ff'], explode=(0.1, 0), shadow=True, startangle=90)
-ax_pie.axis('equal')
-st.pyplot(fig_pie)
-
-# Tabel
-st.dataframe(df.style.highlight_max(axis=0))
