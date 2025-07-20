@@ -5,7 +5,6 @@ import numpy as np
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import matplotlib.pyplot as plt
-from st_aggrid import AgGrid
 from fpdf import FPDF
 import base64
 import io
@@ -134,7 +133,7 @@ if "results" in st.session_state:
     df = pd.DataFrame(st.session_state.results)
     st.markdown("---")
     st.header("📋 Rekap Deteksi Anak")
-    AgGrid(df)
+    st.dataframe(df)
 
     st.subheader("📈 Visualisasi per Kelas")
     kelas_group = df.groupby(["Kelas", "Status"]).size().unstack().fillna(0)
