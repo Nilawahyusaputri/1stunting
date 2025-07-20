@@ -2,138 +2,116 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime
 from fpdf import FPDF
 import os
-import math
 
-# ========== Fungsi-fungsi ========== #
+# --- Setup Direktori ---
+if not os.path.exists("laporan_gizi"):
+    os.makedirs("laporan_gizi")
+if not os.path.exists("grafik"):
+    os.makedirs("grafik")
 
-def calculate_age(birth_date):
-    today = datetime.today()
-    age_days = (today - birth_date).days
-    age_years = age_days // 365
-    age_months = age_days // 30
-    return age_years, age_months, age_days
+# --- WHO Standar HAZ (Sederhana) ---
+def calculate_haz(height, age, sex):
+    median_height = {
+        'L': [109.2, 114.6, 120.0, 125.1, 130.1, 134.9],
+        'P': [108.4, 113.7, 119.0, 124.2, 129.2, 134.0]
+    }
+    sd_height = {
+        'L': [4.6, 4.9, 5.2, 5.5, 5.8, 6.0],
+        'P': [4.5, 4.8, 5.1, 5.4, 5.7, 6.0]
+    }
+    usia_index = int(age) - 5
+    if usia_index < 0 or usia_index >= len(median_height[sex]):
+        return None
+    z = (height - median_height[sex][usia_index]) / sd_height[sex][usia_index]
+    return round(z, 2)
 
-def calculate_z_score(x, l, m, s):
-    if l == 0:
-        return np.log(x / m) / s
+def generate_tip(status):
+    if status == "Stunting":
+        return "Asupan gizi perlu ditingkatkan dan perlu pemantauan rutin."
+    elif status == "Normal":
+        return "Pertumbuhan baik! Terus jaga pola makan dan kebersihan."
     else:
-        return ((x / m) ** l - 1) / (l * s)
+        return "Perlu validasi ulang data."
 
-@st.cache_data
-def load_growth_reference(file_path):
-    return pd.read_csv(file_path)
-
-def get_lms_values(df, month):
-    if month not in df['Month'].values:
-        nearest = df.iloc[(df['Month'] - month).abs().argsort()[:1]]
-        row = nearest.iloc[0]
-    else:
-        row = df[df['Month'] == month].iloc[0]
-    return row['L'], row['M'], row['S']
-
-def interpret_z_score(z, tipe):
-    if tipe == 'HFA':
-        if z < -3:
-            return 'Stunting Berat'
-        elif z < -2:
-            return 'Stunting'
-        else:
-            return 'Normal'
-    elif tipe == 'WFA':
-        if z < -3:
-            return 'Berat Badan Sangat Kurang'
-        elif z < -2:
-            return 'Berat Badan Kurang'
-        elif z > 2:
-            return 'Risiko Obesitas'
-        elif z > 1:
-            return 'Risiko Berat Lebih'
-        else:
-            return 'Normal'
-
-def load_avatar(gender, status):
-    status_key = status.lower().replace(" ", "_")
-    path = f"avatars/{gender.lower()}_{status_key}.png"
-    if os.path.exists(path):
-        return path
-    return None
-
-def generate_pdf(data):
+def generate_pdf(name, age, gender, height, weight, haz, status):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
 
-    pdf.cell(200, 10, txt="Hasil Deteksi Status Gizi Anak", ln=True, align='C')
+    pdf.cell(200, 10, txt="Laporan Status Gizi - StunTrack SD", ln=True, align='C')
     pdf.ln(10)
-    for k, v in data.items():
-        pdf.cell(200, 10, txt=f"{k}: {v}", ln=True)
-    path = "hasil_deteksi.pdf"
-    pdf.output(path)
-    return path
+    pdf.cell(200, 10, txt=f"Nama: {name}", ln=True)
+    pdf.cell(200, 10, txt=f"Usia: {age} tahun", ln=True)
+    pdf.cell(200, 10, txt=f"Jenis Kelamin: {'Laki-laki' if gender == 'L' else 'Perempuan'}", ln=True)
+    pdf.cell(200, 10, txt=f"Tinggi Badan: {height} cm", ln=True)
+    pdf.cell(200, 10, txt=f"Berat Badan: {weight} kg", ln=True)
+    pdf.cell(200, 10, txt=f"Z-score HAZ: {haz}", ln=True)
+    pdf.cell(200, 10, txt=f"Status: {status}", ln=True)
+    pdf.ln(10)
+    pdf.multi_cell(0, 10, txt="Saran: " + generate_tip(status))
 
-# ========== Load Data WHO ========== #
-hfa_boys = load_growth_reference('data/hfa_boys.csv')
-hfa_girls = load_growth_reference('data/hfa_girls.csv')
-wfa_boys = load_growth_reference('data/wfa_boys.csv')
-wfa_girls = load_growth_reference('data/wfa_girls.csv')
+    filename = f"laporan_gizi/{name.replace(' ', '_')}_gizi.pdf"
+    pdf.output(filename)
+    return filename
 
-# ========== UI Streamlit ========== #
-st.set_page_config(page_title="Deteksi Stunting Anak SD", layout="centered")
-st.title("📊 Deteksi Stunting Anak SD di Desa")
-st.markdown("Aplikasi ini membantu mendeteksi status gizi anak berdasarkan standar WHO.")
+# --- Streamlit UI ---
+st.set_page_config(page_title="StunTrack SD", layout="centered")
+st.title("📏 Deteksi Dini Stunting Anak SD")
+st.markdown("_Pantau pertumbuhan anak-anak sekolah dasar dengan mudah_")
 
-with st.form("form_anak"):
-    nama = st.text_input("Nama Anak")
-    kelas = st.selectbox("Kelas", ["1", "2", "3", "4", "5", "6"])
+with st.form("input_form"):
+    name = st.text_input("Nama Anak")
+    age = st.slider("Usia (tahun)", 5, 10)
     gender = st.radio("Jenis Kelamin", ["Laki-laki", "Perempuan"])
-    tgl_lahir = st.date_input("Tanggal Lahir")
-    berat = st.number_input("Berat Badan (kg)", min_value=5.0, max_value=60.0, step=0.1)
-    tinggi = st.number_input("Tinggi Badan (cm)", min_value=80.0, max_value=180.0, step=0.1)
-    submit = st.form_submit_button("Deteksi Sekarang")
+    height = st.number_input("Tinggi Badan (cm)", min_value=50.0, max_value=180.0)
+    weight = st.number_input("Berat Badan (kg)", min_value=10.0, max_value=80.0)
+    kelas = st.selectbox("Kelas", ["1", "2", "3", "4", "5", "6"])
+    submit = st.form_submit_button("🔍 Cek Status Gizi")
 
 if submit:
-    age_y, age_m, age_d = calculate_age(tgl_lahir)
-    st.success(f"Usia anak: {age_y} tahun {age_m%12} bulan ({age_d} hari)")
+    sex_code = 'L' if gender == "Laki-laki" else 'P'
+    haz = calculate_haz(height, age, sex_code)
+    if haz is None:
+        st.warning("Usia tidak valid untuk kalkulasi WHO")
+    else:
+        status = "Stunting" if haz < -2 else "Normal"
 
-    df_hfa = hfa_boys if gender == "Laki-laki" else hfa_girls
-    df_wfa = wfa_boys if gender == "Laki-laki" else wfa_girls
+        st.success(f"Status: **{status}** (Z-Score: {haz})")
+        st.progress(min(max((haz + 3) / 6, 0.0), 1.0))
+        st.caption(generate_tip(status))
 
-    l_hfa, m_hfa, s_hfa = get_lms_values(df_hfa, age_m)
-    l_wfa, m_wfa, s_wfa = get_lms_values(df_wfa, age_m)
+        # Simpan ke CSV
+        new_data = pd.DataFrame([[name, age, gender, kelas, height, weight, haz, status]],
+                                columns=["Nama", "Usia", "Gender", "Kelas", "Tinggi", "Berat", "HAZ", "Status"])
+        if not os.path.isfile("data_stunting.csv"):
+            new_data.to_csv("data_stunting.csv", index=False)
+        else:
+            new_data.to_csv("data_stunting.csv", mode='a', header=False, index=False)
 
-    z_hfa = calculate_z_score(tinggi, l_hfa, m_hfa, s_hfa)
-    z_wfa = calculate_z_score(berat, l_wfa, m_wfa, s_wfa)
+        # PDF
+        pdf_path = generate_pdf(name, age, sex_code, height, weight, haz, status)
+        with open(pdf_path, "rb") as f:
+            st.download_button("📄 Unduh PDF Laporan", f, file_name=pdf_path.split("/")[-1])
 
-    status_hfa = interpret_z_score(z_hfa, 'HFA')
-    status_wfa = interpret_z_score(z_wfa, 'WFA')
+# --- Sidebar Laporan ---
+st.sidebar.title("📊 Laporan Kolektif")
 
-    st.subheader("📋 Hasil Deteksi")
-    st.markdown(f"- **Status Tinggi Badan (HFA)**: `{status_hfa}` (Z={z_hfa:.2f})")
-    st.markdown(f"- **Status Berat Badan (WFA)**: `{status_wfa}` (Z={z_wfa:.2f})")
+if st.sidebar.button("Tampilkan Rekap Data"):
+    if os.path.exists("data_stunting.csv"):
+        df = pd.read_csv("data_stunting.csv")
+        st.sidebar.success("Data ditemukan")
+        st.dataframe(df)
 
-    avatar_path = load_avatar(gender, status_hfa)
-    if avatar_path:
-        st.image(avatar_path, width=150)
-
-    st.info("Tips & Saran: Perbanyak konsumsi protein, istirahat cukup, dan aktif bermain di luar rumah.")
-
-    result_data = {
-        "Nama": nama,
-        "Kelas": kelas,
-        "Jenis Kelamin": gender,
-        "Usia (bulan)": age_m,
-        "Tinggi": tinggi,
-        "Berat": berat,
-        "Status HFA": status_hfa,
-        "Status WFA": status_wfa
-    }
-
-    if st.button("📄 Unduh Hasil PDF"):
-        pdf_file = generate_pdf(result_data)
-        with open(pdf_file, "rb") as f:
-            st.download_button("Download PDF", f, file_name="hasil_deteksi.pdf")
-
-# ========== (Optional) Tambah Visualisasi dan Tabel jika ada data anak-anak lain ==========
+        # Grafik stunting per kelas
+        st.subheader("📈 Grafik Jumlah Stunting per Kelas")
+        chart_data = df[df['Status'] == 'Stunting'].groupby('Kelas').size()
+        fig, ax = plt.subplots()
+        chart_data.plot(kind='bar', ax=ax, color='tomato')
+        ax.set_ylabel("Jumlah Anak Stunting")
+        ax.set_xlabel("Kelas")
+        ax.set_title("Distribusi Anak Stunting")
+        st.pyplot(fig)
+    else:
+        st.sidebar.warning("Belum ada data anak yang dimasukkan.")
