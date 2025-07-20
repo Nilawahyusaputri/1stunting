@@ -4,5 +4,5 @@ numpy
 matplotlib
 fpdf
 python-dateutil
-st-aggrid
+streamlit-aggrid
 who-standards
